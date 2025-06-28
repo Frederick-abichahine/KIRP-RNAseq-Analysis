@@ -129,3 +129,136 @@ The updated dimensions of the data frames are as follows:
 |------------------|-------------------|-------------------|
 | `raw_counts_df`  | 62940 x 100       | 22152 x 100       |
 | `r_anno_df`      | 62940 x 3         | 22152 x 3         |  
+  
+## 3. Differential Expression Analysis  
+  
+### 3.1. Setup & Filtering  
+  
+```{r}
+group <- c_anno_df$condition
+
+# Creating DGEList object
+dge <- DGEList(counts = raw_counts_df, group = group)
+
+# Filtering genes
+# Condition: keep if count > 20 in at least 5 samples of either group
+keep <- rowSums(dge$counts[, group == "case"] > 20) >= 5 |
+        rowSums(dge$counts[, group == "control"] > 20) >= 5
+dge <- dge[keep, , keep.lib.sizes = FALSE]
+```
+  
+### 3.2. Normalization & Model Fitting  
+
+```{r}
+# Normalizing and constructing the design matrix
+dge <- calcNormFactors(dge)
+design <- model.matrix(~ group)
+
+# Estimating dispersion and fitting the model
+dge <- estimateDisp(dge, design)
+fit <- glmFit(dge, design)
+lrt <- glmLRT(fit, coef = 2)
+```
+  
+### 3.3. Annotating DEGs  
+  
+```{r}
+# Extracting results
+results <- topTags(lrt, n = Inf)$table
+
+# Adding average log CPM using edgeR model-based estimate
+results$logCPM <- aveLogCPM(dge)
+
+# Classifying DEGs
+results$DEG <- "not_significant"
+results$DEG[results$FDR < 0.05 & results$logFC > 1.5 & results$logCPM > 1] <- "up"
+results$DEG[results$FDR < 0.05 & results$logFC < -1.5 & results$logCPM > 1] <- "down"
+
+# Displaying summary
+table(results$DEG)
+
+# combine the up and down 
+```
+  
+After applying **differential expression analysis** using the *edgeR package*, a total of *2521 genes* were identified as significantly altered between the case and control groups. Among these, *955 genes* showed significant **up-regulation**, and *1566 genes* were significantly **down-regulated**, based on the thresholds of *FDR < 0.05, log2 fold change > 1.5 (or < -1.5), and logCPM > 1*.
+
+The majority of analyzed genes (14543 genes) did not show statistically significant expression changes under these criteria. These results indicate a focused subset of genes potentially involved in the biological differences between the two conditions.
+
+| Regulation       | Count    | Condition                                    |
+|------------------|----------|----------------------------------------------|
+| Up               | 955      | if FDR < 0.05, log2FC > 1.5, and logCPM > 1  |
+| Down             | 1566     | if FDR < 0.05, log2FC < -1.5, and logCPM > 1 |
+| Not Significant  | 14543    | if FDR >= 0.05 or logCPM <= 1                |
+| **Total**        | **17064**|                                              |
+  
+### 3.4. Results Visualization  
+  
+#### 3.4.1. Volcano Plot  
+
+```{r}
+# Plotting the volcano plot
+ggplot(results, aes(x = logFC, y = -log10(FDR), color = DEG)) +
+  geom_point(alpha = 0.6, size = 1.2) +
+  scale_color_manual(
+    values = c("up" = "#D62728", "down" = "#1F77B4", "not_significant" = "grey80")
+  ) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Volcano Plot of Differential Expression",
+    
+    x = expression("Log"[2]*" Fold Change"),
+    y = expression("-Log"[10]*" FDR"),
+    color = "Regulation"
+  ) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed", color = "black", alpha = 0.5) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black", alpha = 0.5) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "top",
+    panel.grid.minor = element_blank()
+)
+```
+  
+This `volcano plot` visualizes the **differential gene expression between tumor (case) and normal (control) samples** in KIRP. Each point represents a gene, plotted by its log2 fold change (x-axis) and statistical significance as −log10 FDR (y-axis). Genes that are significantly **up-regulated** (lo2FC > 1.5, FDR < 0.05, and logCPM > 1) are shown in **red**, while significantly **down-regulated** genes (log2FC < −1.5) are in **blue**. **Non-significant** genes are shown in **grey**. The dashed vertical and horizontal lines indicate the fold-change and FDR thresholds used. The plot highlights a substantial number of both up- and down-regulated genes, reflecting **widespread transcriptional alterations in the tumor samples**, with several genes showing both strong expression changes and high statistical significance. Notably, the plot reveals a slight **asymmetry**, with more down-regulated genes than up-regulated ones.
+  
+#### 3.4.2. Heatmap Focused on Up & Down Regulated Genes  
+  
+```{r}
+# Generating the expression matrix for heatmap
+logCPM_mat <- cpm(dge, log = TRUE)
+deg_genes <- rownames(results)[results$DEG %in% c("up", "down")]
+heat_data <- logCPM_mat[deg_genes, ]
+heat_data_scaled <- t(scale(t(heat_data)))
+
+# Generating the annotation data frame
+condition <- c_anno_df$condition
+names(condition) <- colnames(heat_data_scaled)
+
+# Definining heatmap annotation and colors
+ha <- HeatmapAnnotation(
+  Condition = condition,
+  col = list(Condition = c("case" = "#02BA0F", "control" = "#3DED97")),
+  annotation_legend_param = list(title = "Condition")
+)
+col_fun <- colorRamp2(c(-8, 0, 8), c("#053061", "#f7f7f7", "#67001f"))
+
+# Plotting the heatmap
+ht_opt$message = FALSE # Just to supress messages from ComplexHeatmap library
+Heatmap(
+  matrix = heat_data_scaled,
+  name = "Z-score logCPM",
+  top_annotation = ha,
+  col = col_fun,
+  show_row_names = FALSE,
+  show_column_names = FALSE,
+  cluster_rows = TRUE,
+  cluster_columns = TRUE,
+  column_title = "Differentially Expressed Genes (Z-score logCPM)",
+  heatmap_legend_param = list(
+    title = "Z-score logCPM"
+  )
+)
+```
+    
+This `heatmap` shows the **expression profiles of DEGs across tumor (case) and normal (control) samples**, using Z-score normalized logCPM values. Samples cluster clearly by condition, reflecting distinct gene expression patterns between groups. **Red and blue** blocks indicate genes consistently **up- or down-regulated** within each condition. Z-score normalization emphasizes relative expression changes, facilitating comparison across genes with different baseline levels. The observed clustering of both samples and genes highlights **strong transcriptional differences** and supports the reliability of the differential expression analysis.  
+  
