@@ -1,0 +1,28 @@
+---
+title: "Kidney Renal Papillary Cell Carcinoma"
+subtitle: "Bioinformatics Resources Project"
+author: 
+  - "Frederick Abi Chahine"
+  - "Hala Alshaar"
+  - "Anastasia Bertova"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    code_folding: show
+    fig_caption: true
+    df_print: paged
+    theme: flatly
+    highlight: zenburn
+    self_contained: true
+params:
+  show_code: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
