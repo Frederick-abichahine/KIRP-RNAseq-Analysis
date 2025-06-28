@@ -262,3 +262,147 @@ Heatmap(
     
 This `heatmap` shows the **expression profiles of DEGs across tumor (case) and normal (control) samples**, using Z-score normalized logCPM values. Samples cluster clearly by condition, reflecting distinct gene expression patterns between groups. **Red and blue** blocks indicate genes consistently **up- or down-regulated** within each condition. Z-score normalization emphasizes relative expression changes, facilitating comparison across genes with different baseline levels. The observed clustering of both samples and genes highlights **strong transcriptional differences** and supports the reliability of the differential expression analysis.  
   
+## 4. Gene Set Enrichment Analysis (GSEA)  
+  
+### 4.1. Preparing Ranked Gene List for GSEA  
+  
+```{r}
+# Matching gene symbols from annotation
+results$gene <- r_anno_df$external_gene_name[match(rownames(results), r_anno_df$ensembl_gene_id)]
+
+# Cleaning gene names by removing empty and duplicated entries
+results_clean <- results[results$gene != "" & !is.na(results$gene), ]
+results_clean <- results_clean[!duplicated(results_clean$gene), ]
+
+# Creating named vector of logFC values with gene symbols
+fc_vector <- results_clean$logFC
+names(fc_vector) <- results_clean$gene
+```
+  
+### 4.2. Loading MSigDB Gene Sets (C4 & C6)  
+  
+```{r MSigDB, message=FALSE, warning=FALSE}
+# Loading gene sets from MSigDB for Homo sapiens
+msig_c4 <- msigdbr(species = "Homo sapiens", category = "C4")
+msig_c6 <- msigdbr(species = "Homo sapiens", category = "C6")
+
+# Converting to list format for fgsea
+c4_list <- split(msig_c4$gene_symbol, msig_c4$gs_name)
+c6_list <- split(msig_c6$gene_symbol, msig_c6$gs_name)
+```
+  
+The Molecular Signatures Database (MSigDB) is a **curated collection of annotated gene sets used for gene set enrichment analysis**. It organizes genes based on shared biological functions, regulatory motifs, and pathways, enabling deeper interpretation of gene expression data.  
+  
+In this section of our study, we focus on **two key MSigDB collections**:
+  
+- The `C4 collection` includes computational gene sets derived from unsupervised clustering of cancer-related gene expression data, often reflecting tissue-specific programs, immune responses, and co-expression modules.  
+  
+- The `C6 collection` consists of oncogenic signatures based on gene expression changes resulting from experimental activation or suppression of oncogenes and tumor suppressors.
+    
+### 4.3. Running GSEA  
+  
+```{r GSEA, warning=FALSE}
+# Setting seed for reproducibility
+set.seed(101)
+
+# Running GSEA with fgsea function
+fgsea_c4 <- fgsea(pathways = c4_list, stats = fc_vector, nperm = 10000)
+fgsea_c6 <- fgsea(pathways = c6_list, stats = fc_vector, nperm = 10000)
+
+# Sorting the results by Normalized Enrichment Score (NES)
+fgsea_c4 <- fgsea_c4[order(fgsea_c4$NES, decreasing = TRUE), ]
+fgsea_c6 <- fgsea_c6[order(fgsea_c6$NES, decreasing = TRUE), ]
+```
+  
+### 4.4. Extracting Top 10 Enriched Gene Sets  
+  
+```{r}
+# Getting the top 10 up- and down-regulated gene sets from C4 and C6
+top10_up_c4 <- head(fgsea_c4, 10)
+top10_down_c4 <- tail(fgsea_c4, 10)
+top10_up_c6 <- head(fgsea_c6, 10)
+top10_down_c6 <- tail(fgsea_c6, 10)
+
+# Displaying summaries
+print(top10_up_c4[, c("pathway", "NES", "padj")])
+print(top10_down_c4[, c("pathway", "NES", "padj")])
+print(top10_up_c6[, c("pathway", "NES", "padj")])
+print(top10_down_c6[, c("pathway", "NES", "padj")])
+```
+  
+We conducted **GSEA** on the ranked expression profile of our samples to identify key biological and regulatory pathways. Specifically, we compared our ranked gene list against the **C4 and C6 collections** from MSigDB.  
+  
+For the `C4 collection`, the top **upregulated** gene sets were enriched for epithelial metabolism and kidney-specific transcriptional programs, suggesting a metabolically active epithelial phenotype. Conversely, the top **downregulated** gene sets were associated with cytotoxic T cell activity and immune signaling, indicating an immune-suppressed or immune-excluded tumor microenvironment.  
+  
+In the `C6 collection`, **upregulated** gene sets revealed activation of KRAS signaling, cytokine response pathways (including IL2 and IL21), and repression signatures linked to BMI1 and MEL18 inhibition, supporting a profile of oncogenic activation and proliferative signaling. **Downregulated** gene sets included p53 and ATM tumor suppressor pathways, along with chromatin regulators such as PRC2 and SNF5, pointing to disrupted tumor suppressor activity and potential epigenetic dysregulation.  
+  
+Together, these findings suggest that our tumor samples exhibit a transcriptional profile characterized by epithelial dominance, immune coldness, and oncogenic signaling activation, consistent with an aggressive tumor-like phenotype.  
+   
+### 4.5. Plotting GSEA Tables for Top Enriched Pathways  
+    
+```{r}
+# Ensuring that the fgsea results are data frames to avoid plotting errors
+fgsea_c4_df <- as.data.frame(fgsea_c4)
+fgsea_c6_df <- as.data.frame(fgsea_c6)
+
+# Plotting GSEA table for top 10 up-regulated in c4
+plotGseaTable(
+  pathways = c4_list[top10_up_c4$pathway],
+  stats = fc_vector,
+  fgseaRes = fgsea_c4_df,
+  gseaParam = 0.5
+)
+
+# Plotting GSEA table for top 10 down-regulated in c4
+plotGseaTable(
+  pathways = c4_list[top10_down_c4$pathway],
+  stats = fc_vector,
+  fgseaRes = fgsea_c4_df,
+  gseaParam = 0.5
+)
+
+# Plotting GSEA table for top 10 up-regulated in c6
+plotGseaTable(
+  pathways = c6_list[top10_up_c6$pathway],
+  stats = fc_vector,
+  fgseaRes = fgsea_c6_df,
+  gseaParam = 0.5
+)
+
+# Plotting GSEA table for top 10 down-regulated in c6
+plotGseaTable(
+  pathways = c6_list[top10_down_c6$pathway],
+  stats = fc_vector,
+  fgseaRes = fgsea_c6_df,
+  gseaParam = 0.5
+)
+```
+  
+To further illustrate the enrichment results, we generated **GSEA tables** highlighting the top up- and downregulated gene sets from the **C4 and C6 collections**.
+  
+### 4.6. Enrichment Plots for One of the Top Up- & Down-regulated Pathways in C4 & C6  
+  
+```{r}
+# Plotting the enrichment score for the single top up-regulated pathway in C4
+plotEnrichment(c4_list[[top10_up_c4$pathway[1]]], fc_vector) +
+  labs(title = paste("C4 Top Upregulated:", top10_up_c4$pathway[1]))
+
+# Plotting the enrichment score for the single top down-regulated pathway in C4
+plotEnrichment(c4_list[[top10_down_c4$pathway[1]]], fc_vector) +
+  labs(title = paste("C4 Top Downregulated:", top10_down_c4$pathway[1]))
+
+# Plotting the enrichment score for the single top up-regulated pathway in C6
+plotEnrichment(c6_list[[top10_up_c6$pathway[1]]], fc_vector) +
+  labs(title = paste("C6 Top Upregulated:", top10_up_c6$pathway[1]))
+
+# Plotting the enrichment score for the single top down-regulated pathway in C6
+plotEnrichment(c6_list[[top10_down_c6$pathway[1]]], fc_vector) +
+  labs(title = paste("C6 Top Downregulated:", top10_down_c6$pathway[1]))
+```
+  
+Each enrichment plot displays a green line representing the **enrichment score (ES)**, a running-sum statistic that increases when a gene from the selected set is encountered in the ranked list and decreases otherwise. Tick marks along the x-axis indicate the positions of these genes within the ranked list. A sharp rise near the beginning of the plot suggests strong enrichment at the top of the gene list (upregulation), while a pronounced decline indicates enrichment at the bottom of the gene list (downregulation).  
+  
+In the `C4 collection`, the **top upregulated** gene set was *GAVISH_3CA_METAPROGRAM_EPITHELIAL_METABOLISM*, where the ES sharply peaks early, showing strong enrichment of epithelial metabolism genes at the top of the ranked list, which is consistent with active metabolic and biosynthetic processes in epithelial cells. In contrast, *GNF2_ITGB2* was the **top downregulated** C4 gene set, with a trough in the ES at the bottom of the ranked list, indicating strong suppression of immune-related genes, particularly those associated with integrin β2 (ITGB2), a key player in leukocyte adhesion and immune cell signaling.  
+  
+For the `C6 oncogenic signature plots`, the **top upregulated** gene set, *BMI1_DN_MEL18_DN_V1_DN*, had an enrichment score peak early in the ranked gene list. This reflects upregulation of genes normally repressed by Polycomb group proteins BMI1 and MEL18, suggesting epigenetic derepression, which is often linked to stemness and aggressive tumor phenotypes. Lastly, the *ATM_DN.V1_UP* gene set was the **most downregulated**, with its ES curve dipping in the mid-to-late portion of the ranked list. This pattern reflects decreased expression of genes normally activated during ATM pathway inhibition, indicating a potentially impaired DNA damage response and greater genomic instability—hallmarks of tumor progression.  
+  
