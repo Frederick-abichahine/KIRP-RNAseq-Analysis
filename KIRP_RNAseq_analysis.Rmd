@@ -630,3 +630,112 @@ write.table(labeled_ppi_network, file = "labeled_ppi_network.tsv", sep = "\t", q
   
 The retrieved PPI network initially used internal *STRING IDs*, which are not easily interpretable. In this step, we mapped each *STRING ID* back to its corresponding gene symbol using our mapping table. This resulted in a **labeled PPI network** where each node is annotated with a human-readable gene name. We then **exported** this labeled network as a TSV file for easier interpretation, visualization, or integration with external tools such as *Cytoscape* or network analysis pipelines.
   
+## 8. PPI Network Visualization & Analysis  
+  
+### 8.1. Creating the PPI Network Graph  
+  
+```{r}
+# Using the full interaction table with gene names
+ppi_edges <- labeled_ppi_network %>% select(from_gene, to_gene, combined_score)
+
+# Creating an undirected igraph object with gene symbols
+g <- graph_from_data_frame(ppi_edges, directed = FALSE)
+
+# Displaying some graph information
+cat("Number of nodes in the graph:", gorder(g), "\nNumber of edges in the graph:", gsize(g), "\n")
+```
+  
+Utilizing the generated labeled PPI network, we created an **undirected graph** object using the *igraph package*, which allows us to represent the PPI network as a graph structure. The edges of the graph are defined by the interactions between genes, with each edge weighted by the combined score from *STRING*, indicating the confidence of the interaction. This graph structure enables us to perform various network analyses and visualizations.  
+  
+### 8.2. Visualizing the Network Degree Distribution  
+  
+```{r}
+# Calculating the degree of each node using the degree() function from igraph
+deg <- degree(g)
+deg_df <- data.frame(gene = names(deg), degree = deg)
+
+# Obtaining the frequency of each degree value
+deg_freq <- deg_df %>%
+  count(degree)
+
+# Plotting the degree distribution
+ggplot(deg_freq, aes(x = degree, y = n)) +
+  geom_col(fill = "#800080", color = "#800080") +
+  theme_minimal() +
+  labs(title = "Degree Distribution of the PPI Network", x = "Degree", y = "Frequency") +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title = element_text(face = "bold")
+  )
+```
+  
+The degree distribution of the PPI network is **highly right-skewed**, indicating that the majority of genes participate in only a few interactions, while a small subset of genes act as hubs with over 500 connections. This pattern is characteristic of a **scale-free network architecture**, where a few highly connected nodes play a central role in maintaining connectivity. Although the average node has around 20 connections, the network consists of 49,824 edges out of a possible 2.8 million $$\frac{N(N-1)}{2} = \frac{2371 \times 2370}{2} = 2,\!809,\!635$$, resulting in an edge density of approximately 1.6%. This confirms that the **network is sparse** overall, a typical feature of biological systems, which favor efficiency, modularity, and robustness through selective connectivity.
+  
+### 8.3. Calculating Centrality Metrics & Identifying the Top Genes for Each  
+  
+```{r}
+# Computing centrality metrics
+centrality_df <- data.frame(
+  gene = V(g)$name,
+  degree = degree(g),
+  closeness = closeness(g, normalized = TRUE),
+  betweenness = betweenness(g, normalized = TRUE)
+)
+
+# Obtaining the top 10 genes by each centrality measure
+top_degree <- centrality_df %>% arrange(desc(degree)) %>% slice(1:10)
+top_closeness <- centrality_df %>% arrange(desc(closeness)) %>% slice(1:10)
+top_betweenness <- centrality_df %>% arrange(desc(betweenness)) %>% slice(1:10)
+top_degree
+top_closeness
+top_betweenness
+```
+  
+In our network analysis, we examined **three key centrality measures** to uncover the roles and influence of individual genes within the PPI network:  
+
+- `Degree Centrality`  
+- `Closeness Centrality`  
+- `Betweenness Centrality`  
+  
+Each metric offers a distinct perspective on how genes contribute to the network’s structure and function.
+
+`Degree centrality` reflects the **number of direct connections a gene holds in the network. Genes with a high degree act as hubs**, serving as major points of interaction within the network. For instance, *ALB (Albumin)* was identified as the most connected gene, with *602 interactions*. Similarly, genes like *PTPRC, GAPDH, CD8A, and VEGFA* also showed high connectivity, indicating their involvement in crucial pathways such as immune signaling, metabolism, and blood vessel formation.  
+  
+`Closeness centrality`, on the other hand, measures **how close a gene is to all others in the network, reflecting how quickly it can affect or be affected by the entire system**. Some genes, such as *C6ORF52, SLFN12L, TMSB15B and C18ORF63*, had **perfect closeness scores of 1.0**, but these were confined to **small disconnected subgraphs**, where all nodes are directly adjacent. While mathematically high, these values **do not reflect true global centrality**. In contrast, key genes within the main connected component, such as *ALB, GAPDH, FN1, VEGFA, and PTPRC*, also ranked highly in closeness, highlighting their importance in rapidly influencing a broad range of other genes within the core of the network.  
+  
+`Betweenness centrality` identifies **genes that serve as bridges within the network, controlling the flow of information along the shortest paths between other genes**. Genes with high betweenness scores are often critical for maintaining communication within the network. In our analysis, *ALB* again ranked highest, alongside *GAPDH, FN1, EGF, and CDH1*. Notably, genes like *EGF, CDH1, and CFTR* showed moderate degree but high betweenness, suggesting their importance as **bottlenecks** or mediators connecting otherwise distant network modules.  
+  
+Overall, the recurring prominence of genes such as *ALB, GAPDH, FN1, PTPRC, and VEGFA* across all three centrality measures underscores their **central regulatory roles**. These genes are likely key drivers of immune response, metabolism, cell adhesion, and vascular remodeling, reflecting their functional significance in the biological system under study.  
+  
+### 8.4. Identifying the Largest Connected Component (LCC)  
+  
+```{r}
+# Decompose the graph into components
+components_info <- components(g)
+
+# Extract LCC
+lcc <- induced_subgraph(g, which(components_info$membership == which.max(components_info$csize)))
+
+# Summary
+cat("Number of connected components:", components_info$no, "\n")
+cat("Size of largest component:", gorder(lcc), "nodes and", gsize(lcc), "edges\n")
+```
+  
+To better understand the structural organization of the DEG-based PPI network, we decomposed the graph into its connected components. A **connected component** is a subgraph in which any two nodes are connected to each other by a path.
+
+Our analysis revealed **3 total connected components**, with the `largest connected component (LCC)` comprising **2367 nodes and 49,818 edges**. This dominant cluster contains the majority of DEGs and their interactions, reflecting a highly interconnected core of the biological network. Such a large LCC suggests strong functional integration and extensive signaling cross-talk among the deregulated genes, reinforcing the biological coherence of the differential expression results.
+  
+### 8.5. Visualizing the LCC  
+  
+```{r visLCC, warning=FALSE}
+ggraph(lcc, layout = "fr") +
+  geom_edge_link(alpha = 0.3, color = "gray60") +
+  geom_node_point(size = 4, color = "#ff7f0e") +
+  geom_node_text(aes(label = name), size = 3, repel = TRUE) +
+  theme_void() +
+  labs(title = "Largest Connected Component of the DEG PPI Network") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+```
+  
+Visualization of the LCC using a force-directed layout reveals a **visually complex yet structurally sparse network**. Notably, the LCC **comprises virtually the entire network** (over 99% of all nodes), indicating that the majority of DEGs are part of a single, coherent interaction space. This extensive connectivity, though sparse, highlights widespread co-regulation and functional interaction among the genes, especially around central hubs and key signaling modules. The force-directed layout helps expose these topological features by clustering highly connected genes and spreading apart loosely connected ones, allowing clearer insight into the network's functional architecture.  
+  
