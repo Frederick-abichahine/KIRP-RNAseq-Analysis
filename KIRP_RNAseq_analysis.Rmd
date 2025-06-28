@@ -521,3 +521,63 @@ length(unique_tf_down)
   
 In this step, we **extracted significant TFs** by filtering for interactions with a false discovery rate (FDR)-adjusted p-value less than 0.01 from both **upregulated and downregulated** gene sets. This adjustment controls for multiple testing and reduces the likelihood of **false positives**. For each target gene, we selected the most significant TF (with the lowest adjusted p-value) to avoid redundancy. We then identified the unique TFs involved in each set and counted them, resulting in *22 unique TFs* associated with **upregulated** targets and *18* with **downregulated** targets. This process highlights the most statistically robust regulators potentially driving **differential gene expression** in the dataset.
   
+## 6. Empirical Distribution of Top-Enriched TF  
+  
+### 6.1. Extracting SOX9 Motifs & Preparing Promoter Sequences  
+  
+```{r motifsExtraction, message=FALSE, warning=FALSE}
+# Extracting SOX9 PWMs from MotifDb for Homo sapiens
+motifs_sox9 <- subset(MotifDb, organism == 'Hsapiens' & geneSymbol == 'SOX9')
+pwms_sox9 <- toPWM(as.list(motifs_sox9))
+names(pwms_sox9) <- sapply(names(pwms_sox9), function(x) strsplit(x, "-")[[1]][3])
+
+# Ensuring that the promoter sequences of downregulated genes are available
+stopifnot(exists("seqs_down")) # Should be a DNAStringSet object
+
+# Computing raw motif scores for each promoter sequence
+scores_list <- lapply(seqs_down, function(prom) motifScores(prom, pwms_sox9, raw.score = TRUE))
+names(scores_list) <- names(seqs_down)
+```
+  
+### 6.2. Calculating Background Thresholds & Enrichment Cutoffs  
+  
+```{r cutoffs, message=FALSE, warning=FALSE}
+# Computing empirical background score distributions using hg19 for SOX9 motifs
+ecdf <- motifEcdf(pwms_sox9, organism = "hg19", quick = TRUE)
+
+# Calculating 99.75% log2-transformed threshold for each motif
+sox9_thresholds <- sapply(names(pwms_sox9), function(name) {
+  log2(quantile(ecdf[[name]], 1 - 0.0025, na.rm = TRUE))
+})
+names(sox9_thresholds) <- names(pwms_sox9)
+```
+  
+For downstream analysis, **SOX9, one of the top-enriched TFs**, was selected to investigate its potential binding in the promoters of **downregulated genes**. We retrieved *16 SOX9 PWMs* for *H. sapiens* from MotifDb, for which we computed raw motif scores across the promoter sequences of downregulated genes. To assess significance, we calculated **empirical score distributions** using the *hg19 genomic background* and determined log2-transformed thresholds at the *99.75th percentile*. These thresholds represent cutoff values above which SOX9 binding sites are **unlikely to occur by chance**. From these PWMs, we selected **one representative binding model**, *SOX9_HUMAN.H10MO.B* from the *HOCOMOCO v10* database, to visualize predicted binding affinities in promoter regions. For this PWM, a threshold score of *4.265822* was computed from the empirical background distribution.
+  
+### 6.3. Visualizing SOX9 Motif Scores in a Promoter Sequence  
+  
+```{r}
+# Selecting motif and gene to plot
+motif_name_to_plot <- names(sox9_thresholds)[1]
+cutoff_to_plot <- sox9_thresholds[[motif_name_to_plot]]
+
+# Plotting the motif scores without cutoff
+plotMotifScores(scores_list[[1]], sel.motifs = motif_name_to_plot,
+                cols = c("steelblue", "forestgreen", "tomato"),
+                main = paste("SOX9 Motif:", motif_name_to_plot, "| Gene:", names(scores_list)[1]))
+
+# Plotting the motif scores with cutoff
+plotMotifScores(scores_list[[1]], sel.motifs = motif_name_to_plot,
+                cols = c("steelblue", "forestgreen", "tomato"),
+                cutoff = cutoff_to_plot,
+                main = paste("SOX9 Motif w/ Cutoff:", motif_name_to_plot, "| Gene:", names(scores_list)[1]))
+```
+  
+The two graphs illustrate **SOX9 motif matches within a 500 bp region of Gene 100, with and without applying a score cutoff**.  
+  
+In the `first graph`, all potential binding sites are shown regardless of their strength, including both strong and weak matches on the forward and reverse strands. This provides a comprehensive view but may include low-confidence, biologically insignificant sites.  
+  
+In contrast, the `second graph` applies a cutoff score of 4.265, filtering out weaker matches and retaining only the stronger, more likely functional binding sites—resulting in six clear matches on the forward strand.  
+  
+Overall, applying **a cutoff enhances the specificity of the analysis** by highlighting high-confidence SOX9 binding regions, making the results more biologically meaningful.  
+  
