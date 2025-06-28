@@ -581,3 +581,52 @@ In contrast, the `second graph` applies a cutoff score of 4.265, filtering out w
   
 Overall, applying **a cutoff enhances the specificity of the analysis** by highlighting high-confidence SOX9 binding regions, making the results more biologically meaningful.  
   
+## 7. Protein-Protein Interaction (PPI) Network Construction  
+  
+### 7.1. Retrieving PPI Interactions from STRING  
+  
+```{r}
+# Initializing the STRINGdb object
+string_db <- STRINGdb$new(version = "11.5", species = 9606, score_threshold = 400)
+# Species 9606 = the NCBI taxonomy ID of Homo sapiens
+# Score threshold = the minimum confidence score for interactions, here set to 400
+
+# Preparing the DEG gene list
+selected_up_genes <- results$gene[results$DEG == "up"]
+selected_down_genes <- results$gene[results$DEG == "down"]
+deg_genes <- unique(c(selected_up_genes, selected_down_genes))
+
+# Converting to a data frame
+deg_genes_df <- data.frame(gene = deg_genes, stringsAsFactors = FALSE)
+
+# Mapping gene symbols to STRING IDs
+mapped <- string_db$map(deg_genes_df, "gene", removeUnmappedRows = TRUE)
+
+# Retrieving PPI interactions
+ppi_network <- string_db$get_interactions(mapped$STRING_id)
+```
+  
+In this step, we initialized the **STRINGdb** object to access the STRING PPI database for *Homo sapiens (taxonomy ID: 9606)*. We compiled a list of DEGs, combining both **up- and down-regulated** genes, and mapped their gene symbols to *STRING* identifiers. Using these *STRING IDs*, we retrieved **high-confidence PPIs** (combined score >= 400), which represent biologically meaningful associations based on multiple evidence channels such as experimental data, co-expression, and database annotations. This forms the foundation of our interaction network for downstream analysis.  
+  
+### 7.2. Mapping Gene Symbols & Exporting the Labeled PPI Network
+  
+```{r exportingPPI, message=FALSE, warning=FALSE}
+# Creating a look-up table to map each gene id to its corresponding gene name
+id_to_gene <- mapped[, c("STRING_id", "gene")]
+
+# Merging gene symbols for both ends of the interaction
+labeled_ppi_network <- ppi_network %>%
+  left_join(id_to_gene, by = c("from" = "STRING_id")) %>%
+  rename(from_gene = gene) %>%
+  left_join(id_to_gene, by = c("to" = "STRING_id")) %>%
+  rename(to_gene = gene)
+
+# Reordering columns for readability
+labeled_ppi_network <- labeled_ppi_network[, c("from", "from_gene", "to", "to_gene", "combined_score")]
+
+# Saving labeled network as a TSV file
+write.table(labeled_ppi_network, file = "labeled_ppi_network.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+  
+The retrieved PPI network initially used internal *STRING IDs*, which are not easily interpretable. In this step, we mapped each *STRING ID* back to its corresponding gene symbol using our mapping table. This resulted in a **labeled PPI network** where each node is annotated with a human-readable gene name. We then **exported** this labeled network as a TSV file for easier interpretation, visualization, or integration with external tools such as *Cytoscape* or network analysis pipelines.
+  
