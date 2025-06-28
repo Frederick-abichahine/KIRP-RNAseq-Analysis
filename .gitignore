@@ -1,0 +1,4 @@
+# Ignoring R data and history files
+KIRP_data.RData
+.RData
+.Rhistory
