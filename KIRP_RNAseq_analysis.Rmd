@@ -62,3 +62,40 @@ library(igraph) # For creating and analyzing networks
 library(ggraph) # For visualizing networks with ggplot2 syntax
 library(tidygraph) # For tidy data manipulation of graph objects
 ```
+
+
+## 1. Loading, Exploring & Preprocessing the Data  
+
+```{r}
+# Setting dynamic working directory
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+# Reading the KIRP data
+load("./BR_project_data_kidney_renal_papillary_cell_carcinoma.RData")
+
+# Exploring the data
+ls()
+head(raw_counts_df[, 1:5])
+head(c_anno_df)
+head(r_anno_df)
+summary(raw_counts_df)
+summary(c_anno_df)
+summary(r_anno_df)
+dim(raw_counts_df)
+dim(c_anno_df)
+dim(r_anno_df)
+
+# Preprocessing required fields
+c_anno_df$condition <- factor(c_anno_df$condition)
+summary(c_anno_df$condition)
+```
+  
+The RData file contains **three data frames**:  
+  
+| Data Frame       | Description                                      | Dimensions     |  
+|------------------|--------------------------------------------------|----------------|  
+| `raw_counts_df`  | Raw RNA-seq counts                               | 62940 x 100    |  
+| `c_anno_df`      | Sample names and conditions                      | 100 x 2        |  
+| `r_anno_df`      | Ensembl gene IDs, gene lengths, and gene symbols | 62940 x 3      |  
+  
+Additionally, the condition column in `c_anno_df` was converted to a factor to facilitate downstream analysis.
