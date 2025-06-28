@@ -406,3 +406,118 @@ In the `C4 collection`, the **top upregulated** gene set was *GAVISH_3CA_METAPRO
   
 For the `C6 oncogenic signature plots`, the **top upregulated** gene set, *BMI1_DN_MEL18_DN_V1_DN*, had an enrichment score peak early in the ranked gene list. This reflects upregulation of genes normally repressed by Polycomb group proteins BMI1 and MEL18, suggesting epigenetic derepression, which is often linked to stemness and aggressive tumor phenotypes. Lastly, the *ATM_DN.V1_UP* gene set was the **most downregulated**, with its ES curve dipping in the mid-to-late portion of the ranked list. This pattern reflects decreased expression of genes normally activated during ATM pathway inhibition, indicating a potentially impaired DNA damage response and greater genomic instability—hallmarks of tumor progression.  
   
+## 5. Transcription Factors (TFs) Identification  
+  
+### 5.1. Preparing DEGs & Pathway Genes  
+  
+```{r}
+# Preparing the DEGs
+de_results <- results_clean
+de_up <- de_results %>% filter(logFC > 1.5 & FDR < 0.05 & logCPM > 1)
+de_down <- de_results %>% filter(logFC < -1.5 & FDR < 0.05 & logCPM > 1)
+
+# Getting gene lists from the top GSEA sets
+top_pathways_c4 <- c(top10_up_c4$pathway, top10_down_c4$pathway)
+top_pathways_c6 <- c(top10_up_c6$pathway, top10_down_c6$pathway)
+
+# Extracting genes from the C4 and C6 lists
+genes_from_c4 <- unlist(c4_list[top_pathways_c4])
+genes_from_c6 <- unlist(c6_list[top_pathways_c6])
+all_genes <- unique(c(genes_from_c4, genes_from_c6))
+
+# Filtering the DEGs by pathway genes
+selected_up_genes <- intersect(de_up$gene, all_genes)
+selected_down_genes <- intersect(de_down$gene, all_genes)
+```
+  
+### 5.2. Mapping to Entrez IDs & Retrieving Promoters  
+  
+```{r gettingPromoters, message=FALSE, warning=FALSE}
+# Mapping gene symbols to Entrez IDs using biomaRt
+mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+all_genes_info <- getBM(attributes = c("external_gene_name", "entrezgene_id"),
+                        filters = "external_gene_name",
+                        values = unique(c(selected_up_genes, selected_down_genes)),
+                        mart = mart)
+
+# Loading gene coordinates from TxDb and mapping to gene names
+txdb_genes <- genes(TxDb.Hsapiens.UCSC.hg38.knownGene)
+txdb_genes$gene_name <- all_genes_info$external_gene_name[match(txdb_genes$gene_id,
+                                                                all_genes_info$entrezgene_id)]
+# Getting 500 bp upstream promoters for selected genes
+promoters_up <- subset(promoters(txdb_genes, upstream = 500, downstream = 0),
+                       gene_name %in% selected_up_genes)
+promoters_down <- subset(promoters(txdb_genes, upstream = 500, downstream = 0),
+                         gene_name %in% selected_down_genes)
+```
+  
+To investigate **upstream regulatory elements of DEGs**, we first selected genes that were both significantly altered in expression and members of key GSEA-enriched pathways. These genes were mapped to their corresponding **Entrez Gene IDs**, and their promoter regions, defined as the *500 base pairs* upstream of the **transcription start site** (TSS), were retrieved using the Ensembl database via the biomaRt package. This set of promoter sequences served as the input for downstream motif enrichment analysis.  
+  
+### 5.3. Extracting Sequences & Running Motif Enrichment  
+  
+```{r TFIdentifier, message=FALSE, warning=FALSE}
+# Retrieving sequences from hg19 genome
+seqs_up <- getSeq(BSgenome.Hsapiens.UCSC.hg38, promoters_up)
+seqs_down <- getSeq(BSgenome.Hsapiens.UCSC.hg38, promoters_down)
+
+# Loading motif database
+data(PWMLogn.hg19.MotifDb.Hsap)
+
+# Running motif enrichment (output suppressed)
+set.seed(444) # Setting seed for reproducibility
+res_up <- motifEnrichment(seqs_up, PWMLogn.hg19.MotifDb.Hsap, score = "affinity")
+res_down <- motifEnrichment(seqs_down, PWMLogn.hg19.MotifDb.Hsap, score = "affinity")
+
+# Reporting top motifs
+report_up <- sequenceReport(res_up, 1)
+report_down <- sequenceReport(res_down, 1)
+```
+  
+For **motif enrichment analysis**, we employed the *PWMEnrich package*, which requires background models computed for a specific genome build. We used the *hg19 human genome* as the reference for statistical scoring, as it is the only build currently supported by the precomputed background models embedded in *PWMEnrich*. Although the *hg38 genome assembly* is more recent and biologically accurate, *PWMEnrich* does not provide corresponding background models, and conflicts with other packages under recent R versions.  
+  
+To address this, we **extracted promoter sequences** based on the *hg38 genome build*, which allowed us to leverage improved gene annotations and coordinate accuracy. These sequences were then analyzed using *PWMEnrich* with the *hg19-based background model*, which could introduce a minor inconsistency due to the mismatch between genome builds. However, this approach allows **reliable statistical scoring** while benefiting from the improved annotations of hg38.   
+  
+### 5.4. Visualizing Motif Enrichment Results  
+  
+```{r}
+# Plotting the top enriched motifs for up- and down-regulated genes
+plot(report_up[report_up$p.value < 0.01], fontsize = 7, id.fontsize = 6)
+plot(report_down[report_down$p.value < 0.01], fontsize = 7, id.fontsize = 6)
+```
+  
+To uncover transcriptional regulators behind gene expression changes, we **analyzed motifs in the 500 bp promoter regions** of genes significantly differentially expressed and enriched in key *GSEA pathways (C4 and C6)*, based on the *hg19 genome*.  
+  
+Promoters of **upregulated** genes were enriched for motifs linked to TFs like *FOXB1, FOXJ3, DUXA, and GSC2*. These factors are known for roles in embryonic development, cell fate decisions, and maintaining pluripotency or regenerative states. Some enriched motifs lack detailed functional annotation, suggesting novel or context-specific regulatory elements. Overall, this points to **upregulated** genes being controlled by TFs that promote cellular plasticity and stem-like transcriptional programs, indicative of a **shift toward a more primitive or regenerative state**, relevant in tissue remodeling or tumorigenesis.  
+  
+In contrast, **downregulated** genes showed motif enrichment for TFs such as *SOX9, SOX10, FOXC1, TFAP2A, and ELK1*, which are involved in neural crest development, differentiation, vascular formation, and immune response. The enrichment suggests repression of immune activity and lineage-specific functions. Some under-characterized motifs hint at unknown TFs contributing to suppressing mature cellular identities.  
+  
+Together, these results reveal a **biphasic regulatory shift**: activation of developmental plasticity factors alongside suppression of differentiation and immune-related TFs. This pattern reflects a biological transition toward less differentiated, more flexible cellular states, commonly observed in cancer progression, regeneration, and reprogramming.  
+  
+### 5.5. Extracting Significant TFs  
+  
+```{r}
+# Extracting significant TFs
+sig_up <- as.data.frame(report_up[report_up$p.value < 0.01, ])
+sig_down <- as.data.frame(report_down[report_down$p.value < 0.01, ])
+
+tf_up <- sig_up %>%
+  group_by(target) %>%
+  slice_min(p.value, n = 1) %>%
+  ungroup()
+
+tf_down <- sig_down %>%
+  group_by(target) %>%
+  slice_min(p.value, n = 1) %>%
+  ungroup()
+
+# Getting unique TFs
+unique_tf_up <- unique(tf_up$target)
+unique_tf_down <- unique(tf_down$target)
+
+# Displaying the counts of unique TFs
+length(unique_tf_up)
+length(unique_tf_down)
+```
+  
+In this step, we **extracted significant TFs** by filtering for interactions with a false discovery rate (FDR)-adjusted p-value less than 0.01 from both **upregulated and downregulated** gene sets. This adjustment controls for multiple testing and reduces the likelihood of **false positives**. For each target gene, we selected the most significant TF (with the lowest adjusted p-value) to avoid redundancy. We then identified the unique TFs involved in each set and counted them, resulting in *22 unique TFs* associated with **upregulated** targets and *18* with **downregulated** targets. This process highlights the most statistically robust regulators potentially driving **differential gene expression** in the dataset.
+  
