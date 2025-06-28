@@ -99,3 +99,33 @@ The RData file contains **three data frames**:
 | `r_anno_df`      | Ensembl gene IDs, gene lengths, and gene symbols | 62940 x 3      |  
   
 Additionally, the condition column in `c_anno_df` was converted to a factor to facilitate downstream analysis.
+  
+## 2. Extracting Protein-Coding Genes  
+
+```{r}
+# Querying the Ensembl database for homo sapiens gene information
+ensembl <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl")
+
+# Getting gene information for the Ensembl IDs in r_anno_df
+gene_info <- getBM(attributes = c("ensembl_gene_id", "gene_biotype"),
+                   filters = "ensembl_gene_id",
+                   values = r_anno_df$ensembl_gene_id,
+                   mart = ensembl)
+
+# Extracting protein-coding genes from the gene_info data frame
+protein_coding_genes <- gene_info[gene_info$gene_biotype == "protein_coding", ]
+cat("> Number of protein-coding genes:", nrow(protein_coding_genes), "\n")
+
+# Updating data frames to include only protein-coding genes
+raw_counts_df <- raw_counts_df[rownames(raw_counts_df) %in% protein_coding_genes$ensembl_gene_id, ]
+r_anno_df <- r_anno_df[r_anno_df$ensembl_gene_id %in% protein_coding_genes$ensembl_gene_id, ]
+```
+  
+From the annotated gene list, we **filtered for protein-coding genes** using the *Ensembl BioMart database*. This resulted in a subset of *22152 protein-coding genes* out of the original *62940 input genes*. The raw count matrix and annotation were aligned accordingly to ensure consistency for downstream expression analysis.  
+  
+The updated dimensions of the data frames are as follows:  
+
+| Data Frame       | Dimensions Before | Dimensions After  |
+|------------------|-------------------|-------------------|
+| `raw_counts_df`  | 62940 x 100       | 22152 x 100       |
+| `r_anno_df`      | 62940 x 3         | 22152 x 3         |  
