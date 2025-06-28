@@ -26,3 +26,39 @@ params:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+  
+## Introduction  
+  
+**Kidney Renal Papillary Cell Carcinoma** (KIRP) is a distinct subtype of renal cell carcinoma that represents approximately *10–15%* of all kidney cancers. It is characterized by unique histological features and molecular alterations that differ from the more common clear cell renal carcinoma. KIRP is further classified into two main subtypes, **type 1 and type 2**, which vary in their cellular characteristics and clinical behavior (Delahunt & Eble, 1997). Despite advances in understanding some genetic mutations involved in KIRP, such as alterations in the *MET gene and fumarate hydratase (FH)*, much remains unknown about the full spectrum of molecular changes driving this disease (TCGA Research Network, 2016; Menko et al., 2014).
+
+**RNA sequencing** (RNA-seq) is a powerful technology that enables the comprehensive analysis of gene expression across the entire transcriptome. By examining RNA-Seq data from *50 tumor samples and 50 matched normal kidney tissue controls*, we can identify **differentially expressed genes (DEGs) and disrupted molecular pathways specific to KIRP**. This analysis will deepen our understanding of the biological mechanisms underlying tumor initiation and progression. Additionally, it may reveal **novel biomarkers** for diagnosis and **potential therapeutic targets**, ultimately contributing to improved clinical management of KIRP patients (Choueiri et al., 2015; Truong & Shen, 2011).
+  
+## Project Pipeline  
+  
+This project focuses on the analysis of **RNA-seq** count data derived from KIRP samples obtained from **The Cancer Genome Atlas** (TCGA). The goal is to explore the molecular differences between **tumor and normal tissues** through a comprehensive bioinformatics pipeline. Key steps include **data preprocessing, filtering for protein-coding genes** using the *biomaRt package*, and **identifying DEGs** via the *edgeR package*. **Visualization** techniques such as *volcano plots and heatmaps* are used to interpret the differential expression results. **Gene set enrichment analysis** (GSEA) is performed using the *fgsea package* to uncover significantly altered pathways in cancer. In addition, we **investigate transcription factors** (TFs) with enriched binding motifs in the promoters of regulated genes and **examine protein-protein interaction** (PPI) networks using *STRING and igraph*. This multi-layered approach provides insights into the transcriptional landscape of KIRP and highlights potential biomarkers or therapeutic targets for further research.
+
+## Loading Dependencies  
+  
+```{r libraries, message=FALSE, warning=FALSE}
+library(biomaRt) # For querying Ensembl databases to retrieve gene information
+library(edgeR) # For differential expression analysis of RNA-seq data
+library(ggplot2) # For data visualization
+library(ComplexHeatmap) # For creating customizable heatmaps
+library(circlize) # For being able to use color functions in ComplexHeatmap
+library(RColorBrewer) # For color palettes
+library(fgsea) # For performing gene set enrichment analysis
+library(msigdbr) # For loading MSigDB gene sets
+library(MotifDb) # For working with transcription factor binding motifs
+library(PWMEnrich) # For motif enrichment analysis
+library(PWMEnrich.Hsapiens.background) # For human background motif data
+library(Biostrings) # For handling biological sequences
+library(GenomicRanges) # For working with genomic ranges and annotations
+library(TxDb.Hsapiens.UCSC.hg38.knownGene) # For gene annotations and genomic features (hg38)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene) # For gene annotations and genomic features (hg19)
+library(BSgenome.Hsapiens.UCSC.hg38) # For accessing the human genome sequence (hg38)
+library(dplyr) # For data manipulation and transformation
+library(STRINGdb) # For accessing the STRING database for protein-protein interactions
+library(igraph) # For creating and analyzing networks
+library(ggraph) # For visualizing networks with ggplot2 syntax
+library(tidygraph) # For tidy data manipulation of graph objects
+```
